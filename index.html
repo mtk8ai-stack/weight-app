@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>体重トラッカー</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #ffffff;
+            --surface: #f8f9fb;
+            --surface2: #f0f2f5;
+            --border: #dde2ea;
+            --text: #1a2236;
+            --text-dim: #8a96aa;
+            --accent: #0077cc;
+            --accent2: #005fa3;
+            --gain: #d63a3a;
+            --loss: #0077cc;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Noto Sans JP', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px 16px 40px;
+        }
+
+        body::before { display: none; }
+
+        .container { max-width: 480px; margin: 0 auto; position: relative; z-index: 1; }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin-bottom: 28px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .header h1 {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            font-weight: 400;
+            letter-spacing: 0.2em;
+            color: var(--accent);
+            text-transform: uppercase;
+        }
+        .header-line {
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(to right, var(--border), transparent);
+        }
+        .header-date {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            color: var(--text-dim);
+        }
+
+        /* Metric row */
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .metric {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .metric::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(to right, var(--accent), transparent);
+        }
+        .metric-label {
+            font-size: 0.62rem;
+            color: var(--text-dim);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+            font-family: var(--mono);
+        }
+        .metric-val {
+            font-family: var(--mono);
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--accent);
+            line-height: 1;
+        }
+        .metric-sub {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+            font-family: var(--mono);
+        }
+        .metric-val.positive { color: var(--gain); }
+        .metric-val.negative { color: var(--loss); }
+
+        /* Card */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 14px;
+        }
+        .card-title {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            letter-spacing: 0.2em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Inputs */
+        .input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        input[type="date"], input[type="number"] {
+            flex: 1;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-family: var(--mono);
+            font-size: 0.82rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="date"]:focus, input[type="number"]:focus {
+            border-color: var(--accent2);
+        }
+        input[type="number"] { max-width: 120px; }
+
+        /* Quick input buttons */
+        .quick-btns {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .quick-btn {
+            flex: 1;
+            min-width: 52px;
+            padding: 7px 4px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: 5px;
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .quick-btn:hover { border-color: var(--accent2); color: var(--text); }
+        .quick-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.07); }
+
+        /* Weight stepper */
+        .weight-stepper {
+            display: flex;
+            gap: 0;
+            margin-bottom: 10px;
+        }
+        .weight-stepper input {
+            flex: 1;
+            border-radius: 0;
+            text-align: center;
+            max-width: none;
+            border-left: none;
+            border-right: none;
+        }
+        .step-btn {
+            width: 44px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .step-btn:first-child { border-radius: 6px 0 0 6px; }
+        .step-btn:last-child  { border-radius: 0 6px 6px 0; }
+        .step-btn:hover { background: var(--border); color: var(--accent); }
+
+        /* Buttons */
+        .btn {
+            width: 100%;
+            padding: 11px;
+            border: none;
+            border-radius: 6px;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            transition: all 0.15s;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #000;
+        }
+        .btn-primary:hover { background: #00eeff; }
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+            font-size: 0.7rem;
+            margin-top: 8px;
+        }
+        .btn-secondary:hover { border-color: var(--accent2); color: var(--text); }
+        .btn-danger {
+            background: transparent;
+            color: #ff4455;
+            border: 1px solid #3a1520;
+            font-size: 0.7rem;
+            margin-top: 6px;
+        }
+        .btn-danger:hover { border-color: #ff4455; background: rgba(255,68,85,0.05); }
+
+        /* Target input row */
+        .target-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .target-label {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            font-family: var(--mono);
+            white-space: nowrap;
+        }
+        .target-row input {
+            max-width: 90px;
+            flex: none;
+        }
+
+        /* History */
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            background: var(--surface2);
+            border-radius: 5px;
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+        .history-item .date { color: var(--text-dim); }
+        .history-item .weight { color: var(--text); font-weight: 600; }
+        .history-item .delta { font-size: 0.65rem; }
+        .history-item .delta.up { color: var(--gain); }
+        .history-item .delta.down { color: var(--loss); }
+
+        /* Analysis */
+        .analysis {
+            font-size: 0.82rem;
+            line-height: 1.8;
+        }
+        .analysis .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 5px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .analysis .row:last-child { border-bottom: none; }
+        .analysis .key {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            font-family: var(--mono);
+        }
+        .analysis .val {
+            font-family: var(--mono);
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: var(--accent);
+        }
+        .analysis .val.warn { color: #f59e0b; }
+        .analysis-note {
+            font-size: 0.67rem;
+            color: var(--text-dim);
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--border);
+            line-height: 1.6;
+        }
+
+        /* Chart */
+        #chart { width: 100% !important; }
+
+        /* Empty state */
+        .empty {
+            text-align: center;
+            padding: 30px 20px;
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            letter-spacing: 0.1em;
+        }
+        .empty .icon { font-size: 1.5rem; margin-bottom: 8px; opacity: 0.4; }
+
+        /* Warning banner */
+        .warning {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 0.72rem;
+            color: #f59e0b;
+            margin-top: 10px;
+            font-family: var(--mono);
+        }
+
+        /* Status dot */
+        .status-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: inline-block;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <!-- Header -->
+    <div class="header">
+        <span class="status-dot"></span>
+        <h1>Weight Tracker</h1>
+        <div class="header-line"></div>
+        <span class="header-date" id="headerDate"></span>
+    </div>
+
+    <!-- Live Metrics -->
+    <div class="metrics">
+        <div class="metric">
+            <div class="metric-label">推定体重</div>
+            <div class="metric-val" id="curW">—</div>
+            <div class="metric-sub" id="curWsub">データなし</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">収支トレンド <span id="balanceHelp" style="cursor:pointer; color:var(--accent2);" title="この値について">?</span></div>
+            <div class="metric-val" id="balance">—</div>
+            <div class="metric-sub" id="balanceSub">体重変化から逆算</div>
+        </div>
+    </div>
+
+    <!-- Input -->
+    <div class="card">
+        <div class="card-title">データ入力</div>
+
+        <!-- Date quick select -->
+        <div style="font-size:0.65rem; color:var(--text-dim); font-family:var(--mono); margin-bottom:6px;">日付</div>
+        <div class="quick-btns" id="quickDateBtns"></div>
+        <div class="input-row" style="margin-bottom:14px;">
+            <input type="date" id="inputDate" onchange="syncDateBtns()">
+        </div>
+
+        <!-- Weight stepper -->
+        <div style="font-size:0.65rem; color:var(--text-dim); font-family:var(--mono); margin-bottom:6px;">体重</div>
+        <div class="weight-stepper">
+            <button class="step-btn" onclick="stepWeight(-0.1)">−</button>
+            <input type="number" id="inputWeight" step="0.1" placeholder="kg" min="10" max="120">
+            <button class="step-btn" onclick="stepWeight(+0.1)">＋</button>
+        </div>
+        <!-- Last recorded as prefill hint -->
+        <div id="lastWeightHint" style="font-size:0.65rem; color:var(--text-dim); font-family:var(--mono); margin-bottom:10px;"></div>
+
+        <button class="btn btn-primary" onclick="addData()">記録する</button>
+
+        <div class="target-row">
+            <span class="target-label">目標体重</span>
+            <input type="number" id="targetW" value="65" step="0.5" onchange="updateUI()">
+            <span class="target-label">kg</span>
+        </div>
+    </div>
+
+    <!-- Analysis -->
+    <div class="card" id="analysisCard">
+        <div class="card-title">分析</div>
+        <div id="analysisContent">
+            <div class="empty"><div class="icon">--</div>データを入力してください</div>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card" id="chartCard" style="display:none;">
+        <div class="card-title">体重推移</div>
+        <canvas id="chart"></canvas>
+    </div>
+
+    <!-- History -->
+    <div class="card" id="historyCard" style="display:none;">
+        <div class="card-title">最近の記録</div>
+        <div id="historyList" class="history-list"></div>
+        <button class="btn btn-secondary" onclick="exportCSV()">CSV書き出し</button>
+        <button class="btn btn-danger" onclick="clearData()">全データ削除</button>
+    </div>
+
+</div>
+
+<script>
+// ---- Kalman Filter (fixed covariance matrix calculation) ----
+class KalmanFilter {
+    process(days, weights) {
+        if (weights.length < 1) return null;
+        let x = [weights[0], 0.0];
+        let P = [[10, 0], [0, 1]];
+        const R = 0.25;
+        const sigma_a = 0.02;
+        let smoothed = [];
+
+        for (let i = 0; i < weights.length; i++) {
+            let dt = (i > 0) ? (days[i] - days[i - 1]) : 1.0;
+            if (dt <= 0) dt = 0.1;
+
+            // State transition
+            const F = [[1, dt], [0, 1]];
+            const Q = [
+                [(dt**4/4)*sigma_a**2, (dt**3/2)*sigma_a**2],
+                [(dt**3/2)*sigma_a**2, (dt**2)*sigma_a**2]
+            ];
+
+            // Predict
+            const x_p = [F[0][0]*x[0] + F[0][1]*x[1], F[1][0]*x[0] + F[1][1]*x[1]];
+
+            // Fixed: proper 2x2 matrix multiplication F*P*F^T
+            const FP = [
+                [F[0][0]*P[0][0] + F[0][1]*P[1][0], F[0][0]*P[0][1] + F[0][1]*P[1][1]],
+                [F[1][0]*P[0][0] + F[1][1]*P[1][0], F[1][0]*P[0][1] + F[1][1]*P[1][1]]
+            ];
+            const P_p = [
+                [FP[0][0]*F[0][0] + FP[0][1]*F[0][1] + Q[0][0], FP[0][0]*F[1][0] + FP[0][1]*F[1][1] + Q[0][1]],
+                [FP[1][0]*F[0][0] + FP[1][1]*F[0][1] + Q[1][0], FP[1][0]*F[1][0] + FP[1][1]*F[1][1] + Q[1][1]]
+            ];
+
+            // Update
+            const S = P_p[0][0] + R;
+            const K = [P_p[0][0] / S, P_p[1][0] / S];
+            const y = weights[i] - x_p[0];
+
+            x = [x_p[0] + K[0]*y, x_p[1] + K[1]*y];
+            P = [
+                [(1 - K[0])*P_p[0][0], (1 - K[0])*P_p[0][1]],
+                [P_p[1][0] - K[1]*P_p[0][0], P_p[1][1] - K[1]*P_p[0][1]]
+            ];
+
+            smoothed.push(x[0]);
+        }
+        return { curW: x[0], velocity: x[1], smoothed };
+    }
+}
+
+// ---- Quick date buttons ----
+function buildQuickDateBtns() {
+    const container = document.getElementById('quickDateBtns');
+    const today = new Date();
+    const labels = ['今日', '昨日', '2日前', '3日前'];
+    container.innerHTML = labels.map((label, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const val = d.toISOString().split('T')[0];
+        return `<button class="quick-btn" data-date="${val}" onclick="setQuickDate('${val}')">${label}</button>`;
+    }).join('');
+    syncDateBtns();
+}
+
+function setQuickDate(val) {
+    document.getElementById('inputDate').value = val;
+    syncDateBtns();
+}
+
+function syncDateBtns() {
+    const cur = document.getElementById('inputDate').value;
+    document.querySelectorAll('.quick-btn[data-date]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.date === cur);
+    });
+}
+
+// ---- Weight stepper ----
+function stepWeight(delta) {
+    const el = document.getElementById('inputWeight');
+    const cur = parseFloat(el.value) || getLastWeight() || 60;
+    el.value = Math.round((cur + delta) * 10) / 10;
+}
+
+function getLastWeight() {
+    if (history.length === 0) return null;
+    const sorted = [...history].sort((a, b) => new Date(b.date) - new Date(a.date));
+    return parseFloat(sorted[0].weight);
+}
+
+function updateLastWeightHint() {
+    const el = document.getElementById('lastWeightHint');
+    const last = getLastWeight();
+    if (last) {
+        const sorted = [...history].sort((a, b) => new Date(b.date) - new Date(a.date));
+        el.textContent = `前回: ${sorted[0].date} に ${last.toFixed(1)} kg`;
+        // Prefill if input is empty
+        if (!document.getElementById('inputWeight').value) {
+            document.getElementById('inputWeight').value = last.toFixed(1);
+        }
+    } else {
+        el.textContent = '';
+    }
+}
+
+let history = JSON.parse(localStorage.getItem('weightHistory') || '[]');
+let chartInstance = null;
+
+// ---- Init ----
+document.getElementById('inputDate').value = new Date().toISOString().split('T')[0];
+document.getElementById('headerDate').textContent = new Date().toLocaleDateString('ja-JP');
+buildQuickDateBtns();
+updateLastWeightHint();
+updateUI();
+
+// ---- Core ----
+function addData() {
+    const date = document.getElementById('inputDate').value;
+    const weightRaw = document.getElementById('inputWeight').value;
+    if (!date || !weightRaw) return;
+    const weight = parseFloat(weightRaw);
+    if (weight < 10 || weight > 120) {
+        alert('体重の値を確認してください (10〜120kg)');
+        return;
+    }
+    // Overwrite if same date
+    const idx = history.findIndex(d => d.date === date);
+    if (idx >= 0) {
+        history[idx].weight = weight;
+    } else {
+        history.push({ date, weight });
+    }
+    localStorage.setItem('weightHistory', JSON.stringify(history));
+    document.getElementById('inputWeight').value = '';
+    updateLastWeightHint();
+    updateUI();
+}
+
+function updateUI() {
+    if (history.length === 0) {
+        document.getElementById('curW').textContent = '—';
+        document.getElementById('balance').textContent = '—';
+        document.getElementById('analysisContent').innerHTML = '<div class="empty"><div class="icon">◎</div>データを入力してください</div>';
+        document.getElementById('chartCard').style.display = 'none';
+        document.getElementById('historyCard').style.display = 'none';
+        return;
+    }
+
+    history.sort((a, b) => new Date(a.date) - new Date(b.date));
+    const baseDate = new Date(history[0].date);
+    const days = history.map(d => (new Date(d.date) - baseDate) / 86400000);
+    const weights = history.map(d => parseFloat(d.weight));
+
+    const result = new KalmanFilter().process(days, weights);
+    if (!result) return;
+
+    // Metrics
+    const curWEl = document.getElementById('curW');
+    curWEl.textContent = result.curW.toFixed(2) + ' kg';
+
+    const targetW = parseFloat(document.getElementById('targetW').value) || 65;
+    const diff = result.curW - targetW;
+    const diffSign = diff > 0 ? '+' : '';
+    document.getElementById('curWsub').textContent = `目標差: ${diffSign}${diff.toFixed(1)} kg`;
+
+    const balanceKcal = result.velocity * 7000; // kg/day → kcal/day equiv
+    const balEl = document.getElementById('balance');
+    balEl.textContent = (balanceKcal >= 0 ? '+' : '') + Math.round(balanceKcal) + ' kcal';
+    balEl.className = 'metric-val ' + (balanceKcal > 50 ? 'positive' : balanceKcal < -50 ? 'negative' : '');
+    document.getElementById('balanceSub').textContent = balanceKcal > 0 ? '増加傾向' : balanceKcal < 0 ? '減少傾向' : '維持傾向';
+
+    // Analysis
+    renderAnalysis(result, diff, balanceKcal, targetW);
+
+    // History
+    renderHistory(weights);
+
+    // Chart
+    renderChart(weights, result.smoothed, targetW);
+
+    document.getElementById('historyCard').style.display = '';
+    document.getElementById('chartCard').style.display = '';
+}
+
+function renderAnalysis(result, diff, balanceKcal, targetW) {
+    const el = document.getElementById('analysisContent');
+
+    if (history.length < 2) {
+        el.innerHTML = '<div class="empty"><div class="icon">--</div>2点以上のデータで分析が始まります</div>';
+        return;
+    }
+
+    let html = '<div class="analysis">';
+
+    if (diff > 0) {
+        // 安全ペース: 体重の0.1%/日（筋肉量を保ちながら減量できる上限の目安）
+        const safeDailyRate = result.curW * 0.001;
+        const safeDays = Math.ceil(diff / safeDailyRate);
+        const safeDate = new Date();
+        safeDate.setDate(safeDate.getDate() + safeDays);
+        const safeDeficit = Math.round(safeDailyRate * 7000);
+
+        // 危険ペース: 体重の0.5%/日超（筋肉分解・栄養不足・代謝低下のリスクが高まる水準）
+        const aggrDailyRate = result.curW * 0.005;
+        const aggrDays = Math.ceil(diff / aggrDailyRate);
+        const aggrDate = new Date();
+        aggrDate.setDate(aggrDate.getDate() + aggrDays);
+        const aggrDeficit = Math.round(aggrDailyRate * 7000);
+
+        const currentDeficit = Math.round(-balanceKcal);
+        const shortfall = safeDeficit - currentDeficit;
+
+        html += `
+            <div class="row"><span class="key">目標まで</span><span class="val">${diff.toFixed(1)} kg</span></div>
+            <div class="row"><span class="key">現在の推定収支</span><span class="val ${balanceKcal > 0 ? 'warn' : ''}">${balanceKcal >= 0 ? '+' : ''}${Math.round(balanceKcal)} kcal/日</span></div>
+        `;
+
+        // 安全ペース欄
+        html += `
+            <div style="margin-top:12px; padding:10px 12px; background:#f0f7ff; border:1px solid #b8d8f0; border-radius:7px;">
+                <div style="font-family:var(--mono); font-size:0.62rem; color:#0077cc; letter-spacing:0.1em; margin-bottom:6px;">身体に負荷をかけずに到達できるペース</div>
+                <div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:3px;">
+                    <span style="color:var(--text-dim); font-family:var(--mono);">到達日の目安</span>
+                    <strong style="color:var(--accent);">${safeDate.toLocaleDateString('ja-JP')}（${safeDays}日後）</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.78rem;">
+                    <span style="color:var(--text-dim); font-family:var(--mono);">1日あたりの必要赤字</span>
+                    <strong style="color:var(--accent);">${safeDeficit} kcal</strong>
+                </div>
+                <div style="font-size:0.65rem; color:#6699bb; margin-top:7px; line-height:1.6;">
+                    体重の0.1%/日以内の減量ペース。筋肉量を保ちながら体脂肪を落とせる、生理学的に持続可能な上限の目安です。
+                </div>
+            </div>
+        `;
+
+        // 危険ペース欄
+        html += `
+            <div style="margin-top:10px; padding:10px 12px; background:#fff5f5; border:1px solid #f0b8b8; border-radius:7px;">
+                <div style="font-family:var(--mono); font-size:0.62rem; color:#c0392b; letter-spacing:0.1em; margin-bottom:6px;">生理学的に負担のかかるペース（参考）</div>
+                <div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:3px;">
+                    <span style="color:var(--text-dim); font-family:var(--mono);">到達日の目安</span>
+                    <strong style="color:#c0392b;">${aggrDate.toLocaleDateString('ja-JP')}（${aggrDays}日後）</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.78rem;">
+                    <span style="color:var(--text-dim); font-family:var(--mono);">1日あたりの必要赤字</span>
+                    <strong style="color:#c0392b;">${aggrDeficit} kcal</strong>
+                </div>
+                <div style="font-size:0.65rem; color:#b07070; margin-top:7px; line-height:1.6;">
+                    体重の0.5%/日超の減量ペース。筋肉の分解・基礎代謝の低下・栄養不足が起こりやすく、リバウンドのリスクも高まります。このペースを超えることは推奨しません。
+                </div>
+            </div>
+        `;
+
+        if (shortfall > 0) {
+            html += `<div class="warning" style="margin-top:10px;">現在のペースから、あと ${shortfall} kcal/日の削減で安全ペースに届きます</div>`;
+        } else {
+            html += `<div class="analysis-note" style="margin-top:8px;">現在のペースは安全ペースの範囲内です。</div>`;
+        }
+
+    } else {
+        html += `
+            <div class="row"><span class="key">目標体重</span><span class="val">${targetW} kg</span></div>
+            <div class="row"><span class="key">現在の状況</span><span class="val">目標達成済み</span></div>
+            <div class="row"><span class="key">収支トレンド</span><span class="val ${balanceKcal > 50 ? 'warn' : ''}">${balanceKcal >= 0 ? '+' : ''}${Math.round(balanceKcal)} kcal/日</span></div>
+        `;
+        if (balanceKcal > 100) {
+            html += `<div class="warning">増加傾向があります。維持のため収支に注意してください。</div>`;
+        }
+    }
+
+    html += `<div class="analysis-note">※カルマンフィルターによる推定値。日々の体重変動(水分・食事)は除去されています。</div>`;
+    html += '</div>';
+
+    // Trend explanation box
+    const absKcal = Math.abs(Math.round(balanceKcal));
+    const weekKcal = Math.abs(Math.round(balanceKcal * 7));
+    const kgPerMonth = Math.abs(result.velocity * 30).toFixed(1);
+    const direction = balanceKcal > 50 ? '増加' : balanceKcal < -50 ? '減少' : '維持';
+    const dirColor = balanceKcal > 50 ? 'var(--gain)' : balanceKcal < -50 ? 'var(--loss)' : 'var(--text-dim)';
+
+    if (history.length >= 2) {
+        html += `
+        <div style="margin-top:14px; padding:12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; font-size:0.72rem; line-height:1.8; color:var(--text-dim);">
+            <div style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); margin-bottom:8px; letter-spacing:0.1em;">収支トレンドの読み方</div>
+            現在の体重変化から逆算すると、<strong style="color:${dirColor}">1日あたり約 ${absKcal} kcal の${direction}傾向</strong>が推定されています。<br>
+            これは1週間で <strong style="color:var(--text);">${weekKcal} kcal</strong>、月間で約 <strong style="color:var(--text);">${kgPerMonth} kg</strong> の体重変動に相当します。<br><br>
+            <span style="color:var(--text-dim);">※ この値は「摂取 − 消費カロリー」の直接計測ではなく、体重の時系列変化をカルマンフィルターで解析した推定値です。日数が少ないほど誤差が大きくなります。数値が大きく見えても、それだけ体重が動いていたことの反映です。</span>
+        </div>
+
+        <div style="margin-top:10px; padding:12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; font-size:0.72rem; line-height:1.8; color:var(--text-dim);">
+            <div style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); margin-bottom:8px; letter-spacing:0.1em;">カルマンフィルターを使う理由</div>
+            体重は食事・水分・排泄などで毎日1〜2 kg程度ばらつきます。単純な移動平均でもノイズを除けますが、<strong style="color:var(--text);">カルマンフィルターは「今の体重」と「変化の速さ（トレンド）」を同時に推定</strong>できる点が異なります。<br><br>
+            測定間隔が不規則でも正確に補正でき、最新のデータほど重く扱う性質があるため、<strong style="color:var(--text);">直近の変化をすばやく反映</strong>しながらも一時的なノイズに引きずられにくい、という特性があります。これはもともと宇宙船の軌道推定などに使われた手法で、不規則なノイズを含む時系列データの「真の値」を追うのに適しています。
+        </div>`;
+    }
+
+    el.innerHTML = html;
+}
+
+function renderHistory(weights) {
+    const el = document.getElementById('historyList');
+    const recent = history.slice(-5).reverse();
+    el.innerHTML = recent.map((d, i) => {
+        const actualIdx = history.length - 1 - i;
+        const prev = actualIdx > 0 ? parseFloat(history[actualIdx - 1].weight) : null;
+        const curr = parseFloat(d.weight);
+        let deltaHtml = '';
+        if (prev !== null) {
+            const delta = curr - prev;
+            const sign = delta > 0 ? '+' : '';
+            const cls = delta > 0 ? 'up' : 'down';
+            deltaHtml = `<span class="delta ${cls}">${sign}${delta.toFixed(1)}</span>`;
+        }
+        return `<div class="history-item">
+            <span class="date">${d.date}</span>
+            <span class="weight">${curr.toFixed(1)} kg</span>
+            ${deltaHtml}
+        </div>`;
+    }).join('');
+}
+
+function renderChart(weights, smoothed, targetW) {
+    const ctx = document.getElementById('chart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
+
+    const labels = history.map(d => d.date.slice(5));
+    const targetLine = new Array(weights.length).fill(targetW);
+
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: '実測値',
+                    data: weights,
+                    borderColor: 'rgba(0,0,0,0.15)',
+                    backgroundColor: 'transparent',
+                    borderDash: [3, 3],
+                    pointRadius: 3,
+                    pointBackgroundColor: 'rgba(0,0,0,0.25)',
+                    tension: 0,
+                    borderWidth: 1,
+                },
+                {
+                    label: 'カルマン推定',
+                    data: smoothed,
+                    borderColor: '#0077cc',
+                    backgroundColor: 'rgba(0,119,204,0.07)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 2,
+                },
+                {
+                    label: '目標',
+                    data: targetLine,
+                    borderColor: 'rgba(200,140,0,0.6)',
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    tension: 0,
+                    borderWidth: 1,
+                    fill: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: '#8a96aa',
+                        font: { family: 'JetBrains Mono', size: 10 },
+                        boxWidth: 12,
+                    }
+                },
+                tooltip: {
+                    backgroundColor: '#ffffff',
+                    borderColor: '#dde2ea',
+                    borderWidth: 1,
+                    titleColor: '#1a2236',
+                    bodyColor: '#8a96aa',
+                    titleFont: { family: 'JetBrains Mono' },
+                    bodyFont: { family: 'JetBrains Mono', size: 11 },
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#8a96aa', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 6 },
+                    grid: { color: '#eaecf0' }
+                },
+                y: {
+                    ticks: { color: '#8a96aa', font: { family: 'JetBrains Mono', size: 10 },
+                             callback: v => v.toFixed(1) + ' kg' },
+                    grid: { color: '#eaecf0' }
+                }
+            }
+        }
+    });
+}
+
+function exportCSV() {
+    let csv = "date,weight\n" + history.map(d => `${d.date},${d.weight}`).join("\n");
+    let blob = new Blob([csv], { type: 'text/csv' });
+    let link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = "weight_data.csv";
+    link.click();
+}
+
+function clearData() {
+    if (confirm("全データを削除しますか？この操作は元に戻せません。")) {
+        localStorage.removeItem('weightHistory');
+        history = [];
+        updateUI();
+    }
+}
+</script>
+</body>
+</html>
